@@ -361,10 +361,8 @@ form { display: grid; gap: 14px; }
   .test-control { right: 10px; bottom: 10px; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  /* Giữ ảnh tĩnh trích từ video thay vì chuyển sang nền trắng. */
-  .video-bg video { display: none; }
-}
+/* Video nền luôn được phép hiển thị kể cả khi thiết bị bật Reduced Motion.
+   Nếu trình duyệt chặn autoplay, người dùng vẫn có nút phát thủ công. */
 
 /* ===== Quả bóng trạng thái local =====
    Luôn là bóng trắng. 6 sao = thất bại, 5 sao = thành công.
@@ -605,15 +603,37 @@ body.transfer-success-open .result-ball {
   .transfer-success-copy { font-size: 13.5px; }
 }
 /* Build marker: XX8-SUCCESS-POPUP-20261105 */
+
+/* Phát video bằng thao tác tay khi trình duyệt chặn autoplay. */
+.video-play-button {
+  position: fixed;
+  left: max(12px, env(safe-area-inset-left));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  z-index: 20;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(17, 36, 54, .94);
+  border: 1px solid rgba(255, 255, 255, .75);
+  border-radius: 12px;
+  color: white;
+  font: 600 13px/1.3 Inter, system-ui, sans-serif;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .26);
+  cursor: pointer;
+}
+body.video-play-required .video-play-button { display: inline-flex; }
+.video-play-button:focus-visible { outline: 3px solid white; outline-offset: 3px; }
 </style>
 </head>
 <body>
   <div class="video-bg" aria-hidden="true">
-    <video id="backgroundVideo" autoplay muted loop playsinline preload="auto">
-      <source src="assets/background-xx8-c3-compatible-20261107.mp4" type="video/mp4" />
+    <video id="backgroundVideo" autoplay muted loop playsinline webkit-playsinline preload="auto">
+      <source src="assets/background-xx8-c3-motion-v2.mp4" type="video/mp4" />
     </video>
     <div class="video-overlay"></div>
   </div>
+  <button class="video-play-button" id="videoPlayButton" type="button" aria-label="Phát video nền chuyển động">▶ Phát video nền</button>
 
   <main class="page-shell">
     <section class="transfer-card" aria-live="polite">
@@ -928,6 +948,58 @@ body.transfer-success-open .result-ball {
   console.info('[XX8] SINGLE HTML build active:', window.__XX8_BUILD__);
 })();
 
+  </script>
+
+  <!-- Chỉ điều khiển video, không thay đổi mã xử lý chuyển điểm. -->
+  <script>
+  (() => {
+    const video = document.getElementById('backgroundVideo');
+    const playButton = document.getElementById('videoPlayButton');
+    if (!video || !playButton) return;
+
+    // Video không có âm thanh để tự phát được trên phần lớn trình duyệt.
+    video.muted = true;
+    video.defaultMuted = true;
+    video.loop = true;
+    video.playsInline = true;
+
+    const showPlay = () => document.body.classList.add('video-play-required');
+    const hidePlay = () => document.body.classList.remove('video-play-required');
+
+    function tryPlay() {
+      const attempt = video.play();
+      if (attempt && typeof attempt.then === 'function') {
+        attempt.then(hidePlay).catch(showPlay);
+      } else if (!video.paused) {
+        hidePlay();
+      }
+    }
+
+    video.addEventListener('playing', hidePlay);
+    video.addEventListener('pause', () => {
+      if (!document.hidden && !video.ended) showPlay();
+    });
+    video.addEventListener('error', showPlay);
+    video.addEventListener('canplay', () => {
+      if (video.paused && !document.hidden) tryPlay();
+    });
+
+    playButton.addEventListener('click', () => {
+      if (video.error) video.load();
+      tryPlay();
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && video.paused) tryPlay();
+    });
+    // Thao tác đầu tiên trên trang có thể mở khóa autoplay bị hạn chế.
+    document.addEventListener('pointerdown', () => {
+      if (video.paused) tryPlay();
+    }, { passive: true });
+    document.addEventListener('keydown', () => {
+      if (video.paused) tryPlay();
+    });
+    tryPlay();
+  })();
   </script>
 </body>
 </html>
